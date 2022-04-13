@@ -32,7 +32,7 @@ binary: v2/pkg/util/oslist.go
 # Target to build a statically linked binary
 static: v2/pkg/util/oslist.go
 	cd v2 && GO_EXTLINK_ENABLED=0 CGO_ENABLED=0 go build \
-	   -ldflags "-w -extldflags -static -X main.gitCommit=${COMMIT}" \
+	   -ldflags "-s -w -extldflags -static -X main.gitCommit=${COMMIT}" \
 	   -tags netgo -installsuffix netgo \
 	   -o ../manifest-tool github.com/estesp/manifest-tool/v2/cmd/manifest-tool
 
