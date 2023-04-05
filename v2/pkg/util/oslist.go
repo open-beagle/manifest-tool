@@ -33,4 +33,5 @@ var validArch = map[string]bool{
 	"s390x": true,
 	"ppc64": true,
 	"386": true,
+	"loong64": true,
 }
