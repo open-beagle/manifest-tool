@@ -15,3 +15,11 @@ mv manifest-tool manifest-tool-linux-$GOARCH
 export GOARCH=ppc64le
 make static
 mv manifest-tool manifest-tool-linux-$GOARCH
+
+export GOARCH=mips64le
+make static
+mv manifest-tool manifest-tool-linux-$GOARCH
+
+export GOARCH=loong64
+make static
+mv manifest-tool manifest-tool-linux-$GOARCH
