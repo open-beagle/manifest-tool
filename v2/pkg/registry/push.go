@@ -14,26 +14,20 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func PushManifestList(username, password string, input types.YAMLInput, ignoreMissing, insecure, plainHttp bool, configDir string) (hash string, length int, err error) {
+func PushManifestList(username, password string, input types.YAMLInput, ignoreMissing, insecure, plainHttp bool, manifestType types.ManifestType, configDir string) (hash string, length int, err error) {
 	// resolve the target image reference for the combined manifest list/index
 	targetRef, err := reference.ParseNormalizedNamed(input.Image)
 	if err != nil {
 		return hash, length, fmt.Errorf("Error parsing name for manifest list (%s): %v", input.Image, err)
 	}
 
-	var configDirs []string
-	if configDir != "" {
-		configDirs = append(configDirs, configDir)
-	}
-	resolver := util.NewResolver(username, password, insecure,
-		plainHttp, configDirs...)
+	resolver := util.NewResolver(username, password, insecure, plainHttp, configDir)
 
-	imageType := types.Docker
 	manifestList := types.ManifestList{
 		Name:      input.Image,
 		Reference: targetRef,
 		Resolver:  resolver,
-		Type:      imageType,
+		Type:      manifestType,
 	}
 	// create an in-memory store for OCI descriptors and content used during the push operation
 	memoryStore := store.NewMemoryStore()
@@ -45,7 +39,7 @@ func PushManifestList(username, password string, input types.YAMLInput, ignoreMi
 			return hash, length, fmt.Errorf("Unable to parse image reference: %s: %v", img.Image, err)
 		}
 		if reference.Domain(targetRef) != reference.Domain(ref) {
-			return hash, length, fmt.Errorf("Cannot use source images from a different registry than the target image: %s != %s", reference.Domain(ref), reference.Domain(targetRef))
+			return hash, length, fmt.Errorf("Source image (%s) registry does not match target image (%s) registry", ref, targetRef)
 		}
 		descriptor, err := FetchDescriptor(resolver, memoryStore, ref)
 		if err != nil {
@@ -117,9 +111,6 @@ func PushManifestList(username, password string, input types.YAMLInput, ignoreMi
 
 func resolvePlatform(descriptor ocispec.Descriptor, img types.ManifestEntry, imgConfig types.Image) (*ocispec.Platform, error) {
 	platform := &img.Platform
-	if platform == nil {
-		platform = &ocispec.Platform{}
-	}
 	// fill os/arch from inspected image if not specified in input YAML
 	if platform.OS == "" && platform.Architecture == "" {
 		// prefer a full platform object, if one is already available (and appears to have meaningful content)

@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -11,31 +11,31 @@ import (
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/sirupsen/logrus"
-	"github.com/urfave/cli"
-	yaml "gopkg.in/yaml.v2"
+	"github.com/urfave/cli/v2"
+	yaml "gopkg.in/yaml.v3"
 )
 
-var pushCmd = cli.Command{
+var pushCmd = &cli.Command{
 	Name:  "push",
 	Usage: "push a manifest list/OCI index entry to a registry with provided image details",
 	Flags: []cli.Flag{
-		cli.StringFlag{
+		&cli.StringFlag{
 			Name:  "type",
 			Value: "docker",
 			Usage: "image manifest type: docker (v2.2 manifest list) or oci (v1 index)",
 		},
 	},
-	Subcommands: []cli.Command{
+	Subcommands: []*cli.Command{
 		{
 			Name:  "from-spec",
 			Usage: "push a manifest list to a registry via a YAML spec",
 			Flags: []cli.Flag{
-				cli.BoolFlag{
+				&cli.BoolFlag{
 					Name:  "ignore-missing",
 					Usage: "only warn on missing images defined in YAML spec",
 				},
 			},
-			Action: func(c *cli.Context) {
+			Action: func(c *cli.Context) error {
 				filePath := c.Args().First()
 				var yamlInput types.YAMLInput
 
@@ -43,7 +43,7 @@ var pushCmd = cli.Command{
 				if err != nil {
 					logrus.Fatalf(fmt.Sprintf("Can't resolve path to %q: %v", filePath, err))
 				}
-				yamlFile, err := ioutil.ReadFile(filename)
+				yamlFile, err := os.ReadFile(filename)
 				if err != nil {
 					logrus.Fatalf(fmt.Sprintf("Can't read YAML file %q: %v", filePath, err))
 				}
@@ -52,47 +52,55 @@ var pushCmd = cli.Command{
 					logrus.Fatalf(fmt.Sprintf("Can't unmarshal YAML file %q: %v", filePath, err))
 				}
 
-				digest, length, err := registry.PushManifestList(c.GlobalString("username"), c.GlobalString("password"), yamlInput, c.Bool("ignore-missing"), c.GlobalBool("insecure"), c.GlobalBool("plain-http"), filepath.Join(c.GlobalString("docker-cfg"), "config.json"))
+				manifestType := types.Docker
+				if c.String("type") == "oci" {
+					manifestType = types.OCI
+				}
+				digest, length, err := registry.PushManifestList(c.String("username"), c.String("password"), yamlInput, c.Bool("ignore-missing"), c.Bool("insecure"), c.Bool("plain-http"), manifestType, c.String("docker-cfg"))
 				if err != nil {
 					logrus.Fatal(err)
 				}
 				fmt.Printf("Digest: %s %d\n", digest, length)
+
+				return nil
 			},
 		},
 		{
 			Name:  "from-args",
 			Usage: "push a manifest list to a registry via CLI arguments",
 			Flags: []cli.Flag{
-				cli.StringFlag{
-					Name:  "platforms",
-					Usage: "comma-separated list of the platforms that images should be pushed for",
+				&cli.StringSliceFlag{
+					Name:     "platforms",
+					Usage:    "comma-separated list of the platforms that images should be pushed for",
+					Required: true,
 				},
-				cli.StringFlag{
-					Name:  "template",
-					Usage: "the pattern the source images have. OS and ARCH in that pattern will be replaced with the actual values from the platforms list",
+				&cli.StringFlag{
+					Name:     "template",
+					Usage:    "the pattern the source images have. OS and ARCH in that pattern will be replaced with the actual values from the platforms list",
+					Required: true,
 				},
-				cli.StringFlag{
-					Name:  "target",
-					Usage: "the name of the manifest list image that is going to be produced",
+				&cli.StringFlag{
+					Name:     "target",
+					Usage:    "the name of the manifest list image that is going to be produced",
+					Required: true,
 				},
-				cli.BoolFlag{
+				&cli.StringSliceFlag{
+					Name:  "tags",
+					Usage: "comma-separated list of additional tags to apply to the manifest list image",
+				},
+				&cli.BoolFlag{
 					Name:  "ignore-missing",
 					Usage: "only warn on missing images defined in platform list",
 				},
 			},
-			Action: func(c *cli.Context) {
-				platforms := c.String("platforms")
+			Action: func(c *cli.Context) error {
+				platforms := c.StringSlice("platforms")
 				templ := c.String("template")
 				target := c.String("target")
+				tags := c.StringSlice("tags")
 				srcImages := []types.ManifestEntry{}
 
-				if len(platforms) == 0 || len(templ) == 0 || len(target) == 0 {
-					logrus.Fatalf("You must specify all three arguments --platforms, --template and --target")
-				}
-
-				platformList := strings.Split(platforms, ",")
-
-				for _, platform := range platformList {
+				for _, platform := range platforms {
 					osArchArr := strings.Split(platform, "/")
 					if len(osArchArr) != 2 && len(osArchArr) != 3 {
 						logrus.Fatal("The --platforms argument must be a string slice where one value is of the form 'os/arch'")
@@ -113,13 +121,20 @@ var pushCmd = cli.Command{
 				}
 				yamlInput := types.YAMLInput{
 					Image:     target,
+					Tags:      tags,
 					Manifests: srcImages,
 				}
-				digest, length, err := registry.PushManifestList(c.GlobalString("username"), c.GlobalString("password"), yamlInput, c.Bool("ignore-missing"), c.GlobalBool("insecure"), c.GlobalBool("plain-http"), filepath.Join(c.GlobalString("docker-cfg"), "config.json"))
+				manifestType := types.Docker
+				if c.String("type") == "oci" {
+					manifestType = types.OCI
+				}
+				digest, length, err := registry.PushManifestList(c.String("username"), c.String("password"), yamlInput, c.Bool("ignore-missing"), c.Bool("insecure"), c.Bool("plain-http"), manifestType, c.String("docker-cfg"))
 				if err != nil {
 					logrus.Fatal(err)
 				}
 				fmt.Printf("Digest: %s %d\n", digest, length)
+
+				return nil
 			},
 		},
 	},
